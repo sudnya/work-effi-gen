@@ -47,29 +47,28 @@ import time
 
 import tensorflow as tf
 
-import cifar10
+from model import Model
 
-FLAGS = tf.app.flags.FLAGS
+logger = logging.getLogger("Train")
 
-#tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train', """Directory where to write event logs """ """and checkpoint.""")
-#tf.app.flags.DEFINE_integer('max_steps', 10000, """Number of batches to run.""")
-tf.app.flags.DEFINE_boolean('log_device_placement', False, """Whether to log device placement.""")
-#tf.app.flags.DEFINE_integer('log_frequency', 100, """How often to log results to the console.""")
 
 INITIAL_LEARNING_RATE = 1.0e-2       # Initial learning rate.
 
 
-def train(config):
-    cifar10.config = config
-
+def train(model, config):
+    
     """Train CIFAR-10 for a number of steps."""
-    batch_size = config.get("batch_size", 32)
+    batch_size  = config.get("batch_size")
+    output_path = config.get("output_path")
+
     with tf.Graph().as_default():
         global_step = tf.contrib.framework.get_or_create_global_step()
 
         # Get images and labels for CIFAR-10.
-        images, labels = cifar10.process_inputs(is_training=True)
-        dev_images, dev_labels = cifar10.process_inputs(is_training=False)
+        logger.info("Process inputs and labels for train/val sets")
+
+        images, labels         = model.process_inputs(is_training=True)
+        dev_images, dev_labels = model.process_inputs(is_training=False)
 
         is_validating = tf.placeholder(dtype=bool,shape=())
         
@@ -77,15 +76,18 @@ def train(config):
         labels = tf.cond(is_validating, lambda:dev_labels, lambda:labels)
 
         # Build a Graph that computes logits predictions from the inference model
-        logits = cifar10.inference(images)
+        logits = model.inference(images)
 
         # Calculate loss.
-        loss = cifar10.loss(logits, labels)
+        logger.info("Calculate loss")
+        loss = model.loss(logits, labels)
         
         # calculate predictions
+        logger.info("Top K predictions")
         top_k_op = tf.nn.in_top_k(logits, labels, 1)
 
         # Optimizer minimizes loss.
+        logger.info("Run optimizer to minimize loss")
         #optimizer = tf.train.AdamOptimizer(learning_rate=INITIAL_LEARNING_RATE).minimize(loss)
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=INITIAL_LEARNING_RATE).minimize(loss)
 
@@ -97,9 +99,9 @@ def train(config):
         # Merge all summaries into a single op
         merged_summary_op = tf.summary.merge_all()
         
-        display_step = config.get("display_step", 20) 
-        epochs = config.get("epochs", 20)
-        steps_per_epoch = config.get("steps_per_epoch", 100)
+        display_step    = config.get("display_step")
+        epochs          = config.get("epochs")
+        steps_per_epoch = config.get("steps_per_epoch")
 
         iteration = 1
         expcost = None
@@ -107,20 +109,21 @@ def train(config):
         saver = tf.train.Saver()
         with tf.Session() as sess:
             sess.run(initializer)
-            saver.save(sess, 'my-model')
+            saver.save(sess, os.path.join(output_path, 'model'))
 
         for epoch in range(epochs):
+            logger.info("Epoch: " + str(epoch))
             with tf.Session() as sess:
-                new_saver = tf.train.import_meta_graph('my-model.meta')
-                new_saver.restore(sess, tf.train.latest_checkpoint('./'))
+                epoch_saver = tf.train.import_meta_graph(os.path.join(output_path, 'model.meta'))
+                epoch_saver.restore(sess, tf.train.latest_checkpoint(os.path.join(output_path, './')))
 
-                summary_writer = tf.summary.FileWriter(config.get("train_dir", ""), graph=tf.get_default_graph())
+                summary_writer = tf.summary.FileWriter(output_path, graph=tf.get_default_graph())
 
                 # Training
                 coord = tf.train.Coordinator()
                 threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-                print("Epoch " + str(epoch))
+                logger.debug("Training epoch: " + str(epoch))
                 step = 1
                 try:
                     while not coord.should_stop() and step < steps_per_epoch:
@@ -134,26 +137,26 @@ def train(config):
                         summary_writer.add_summary(summary, iteration)
 
                         if step % display_step == 0:
-                            print("Iter " + str(step*batch_size) + ", Minibatch Loss= " + \
-                                    "{:.6f}".format(cost) + " {:.6f}".format(expcost))
+                            logger.info("Iteration " + str(step*batch_size) + ", minibatch Loss= {:.6f}".format(cost) + " moving avg loss {:.6f}".format(expcost))
 
                         step += 1
                         iteration += 1
 
                 except tf.errors.OutOfRangeError:
-                    print('End of epoch')
+                    logger.info('End of epoch')
                 finally:
                     # When done, ask the threads to stop.
                     coord.request_stop()
 
                 # Wait for threads to finish.
                 coord.join(threads)
-                saver.save(sess, 'my-model')
+                saver.save(sess, os.path.join(output_path, 'model'))
 
             with tf.Session() as sess:
-                new_saver = tf.train.import_meta_graph('my-model.meta')
-                new_saver.restore(sess, tf.train.latest_checkpoint('./'))
+                epoch_saver = tf.train.import_meta_graph(os.path.join(output_path, 'model.meta'))
+                epoch_saver.restore(sess, tf.train.latest_checkpoint(os.path.join(output_path, './')))
                 # Eval
+                logger.info("Evaluation")
                 coord = tf.train.Coordinator()
                 threads = tf.train.start_queue_runners(sess=sess, coord=coord)
                 true_count = 0
@@ -166,89 +169,38 @@ def train(config):
                         total_sample_count += batch_size
                         step += 1
                 except tf.errors.OutOfRangeError:
-                    print('End of epoch')
+                    logger.info('End of epoch')
                 finally:
                     # When done, ask the threads to stop.
                     coord.request_stop()
                     
                 precision = true_count / total_sample_count
-                print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
+                logger.info('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
                 summary = tf.Summary()
                 summary.value.add(tag='Precision @ 1', simple_value=precision)
                 summary_writer.add_summary(summary, iteration)
 
 
-#        class _LoggerHook(tf.train.SessionRunHook):
-#          """Logs loss and runtime."""
-#
-#          def begin(self):
-#              self._step = -1
-#              self._start_time = time.time()
-#
-#          def before_run(self, run_context):
-#              self._step += 1
-#              return tf.train.SessionRunArgs(loss)  # Asks for loss value.
-#
-#          def after_run(self, run_context, run_values):
-#              if self._step % config.get("log_frequency", 100) == 0:
-#                  current_time = time.time()
-#                  duration = current_time - self._start_time
-#                  self._start_time = current_time
-#
-#                  loss_value = run_values.results
-#                  examples_per_sec = config.get("log_frequency", 100) * config.get("batch_size", 32) / duration
-#                  sec_per_batch = float(duration / config.get("log_frequency", 100))
-#
-#                  format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-#                                'sec/batch)')
-#                  print (format_str % (datetime.now(), self._step, loss_value,
-#                                     examples_per_sec, sec_per_batch))
-#
-#        with tf.train.MonitoredTrainingSession(
-#            checkpoint_dir=config.get("train_dir" "/tmp"),
-#            hooks=[tf.train.StopAtStepHook(last_step=config.get("max_steps", 10000)),
-#            tf.train.NanTensorHook(loss),
-#            _LoggerHook()],
-#            config=tf.ConfigProto(
-#            log_device_placement=FLAGS.log_device_placement)) as mon_sess:
-#            while not mon_sess.should_stop():
-#                mon_sess.run(train_op)
-
-
-def run_epoch(model, data_loader, session, summarizer):
-    summary_op = tf.summary.merge_all()
-
-    for batch in data_loader.train:
-        ops = [model.train_op, model.avg_loss,
-               model.avg_acc, model.it, summary_op]
-
-        res = session.run(ops, feed_dict=model.feed_dict(*batch))
-        _, loss, acc, it, summary = res
-        summarizer.add_summary(summary, global_step=it)
-        if it == 50:
-            model.set_momentum(session)
-            logger.debug("Setting initial momentum in iteration " + str(it))
-
-        msg = "Iter {}: AvgLoss {:.3f}, AvgAcc {:.3f}"
-        logger.debug(msg.format(it, loss, acc))
-        if it % 100 == 0:
-            msg = "Iter {}: AvgLoss {:.3f}, AvgAcc {:.3f}"
-            logger.info(msg.format(it, loss, acc))
-    return acc
-
-def run_training(epochs):
-    
-    for e in range(epochs):
-            start = time.time()
-            train_acc = run_epoch(model, data_loader, sess, summarizer)
-            saver.save(sess, os.path.join(output_save_path, "model"))
-            logger.info("Epoch {} time {:.1f} (s)".format(e, time.time() - start))
-            eval_acc = run_validation(model, data_loader, sess, summarizer)
-
-            if eval_acc > best_eval_acc:
-                saver.save(sess, os.path.join(output_save_path, "best_model.epoch"))
-                best_eval_acc = eval_acc
-                logger.info("Best accuracy so far: " + str(best_eval_acc))
+# one spot to set defaults
+def initialize_defaults(config):
+    if not config.get("data_dir"):
+        config["data_dir"] = "/tmp/cifar10_data"
+        logger.debug("data_dir not set in config file, default to " + str(config.get("data_dir")))
+    if not config.get("output_path"):
+        logger.debug("output_path not set in config file, default to " + str(config.get("output_path")))
+        config["output_path"] = "/tmp/cifar10_output"
+    if not config.get("epochs"):
+        config["epochs"] = 2
+        logger.debug("epochs not set in config file, default to  " + str(config.get("epochs")))
+    if not config.get("batch_size"):
+        config["batch_size"] = 32
+        logger.debug("batch_size not set in config file, default to  " + str(config.get("batch_size")))
+    if not config.get("display_step"):
+        config["display_step"] = 20 
+        logger.debug("display_step not set in config file, default to  " + str(config.get("display_step")))
+    if not config.get("steps_per_epoch"):
+        config["steps_per_epoch"] = 100
+        logger.debug("steps_per_epoch not set in config file, default to  " + str(config.get("steps_per_epoch")))
 
 
 def main(argv=None):  # pylint: disable=unused-argument
@@ -270,18 +222,19 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     with open(config_file) as fid:
         config = json.load(fid)
+        initialize_defaults(config)
 
-    data_dir = config.get("data_dir", "/tmp/cifar10_data")
-    train_dir = config.get("train_dir", "/tmp/cifar10_train")
-    epochs = config.get("epochs", 1000)
 
-    cifar10.maybe_download_and_extract(data_dir)
+    data_dir    = config.get("data_dir")
+    output_path = config.get("output_path")
+    model       = Model(config, is_verbose)
+    model.maybe_download_and_extract(data_dir)
 
-    if tf.gfile.Exists(train_dir):
-        tf.gfile.DeleteRecursively(train_dir)
-    tf.gfile.MakeDirs(train_dir)
-    train(config)
-    #run_training()
+    if tf.gfile.Exists(output_path):
+        tf.gfile.DeleteRecursively(output_path)
+    tf.gfile.MakeDirs(output_path)
+    
+    train(model, config)
 
 
 if __name__ == '__main__':
