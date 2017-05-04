@@ -1,0 +1,7 @@
+{
+    "batch_size" : 8,
+    "data_dir" : "/deep/group/sudnya/cifar10_data",
+    "train_dir" : "/deep/group/sudnya/cifar10_train",
+    "use_fp16" : false
+
+}
