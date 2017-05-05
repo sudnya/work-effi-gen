@@ -183,10 +183,8 @@ def process_inputs(data_dir, batch_size, is_training):
 
         # Because these operations are not commutative, consider randomizing
         # the order their operation.
-        input_image = tf.image.random_brightness(input_image,
-                                                   max_delta=63)
-        input_image = tf.image.random_contrast(input_image,
-                                                 lower=0.2, upper=1.8)
+        input_image = tf.image.random_brightness(input_image, max_delta=63)
+        input_image = tf.image.random_contrast(input_image, lower=0.2, upper=1.8)
     else:
         # Image processing for evaluation.
         # Crop the central [height, width] of the image.

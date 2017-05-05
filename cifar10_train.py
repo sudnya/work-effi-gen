@@ -82,6 +82,8 @@ def train(model, config):
         logger.info("Calculate loss")
         loss = model.loss(logits, labels)
         
+        accuracy = model.accuracy(logits, labels)
+
         # calculate predictions
         logger.info("Top K predictions")
         top_k_op = tf.nn.in_top_k(logits, labels, 1)
@@ -96,6 +98,7 @@ def train(model, config):
 
         # Create a summary to monitor cost tensor
         tf.summary.scalar("loss", loss)
+        tf.summary.scalar("accuracy", accuracy)
         # Merge all summaries into a single op
         merged_summary_op = tf.summary.merge_all()
         
@@ -127,7 +130,7 @@ def train(model, config):
                 step = 1
                 try:
                     while not coord.should_stop() and step < steps_per_epoch:
-                        _, cost, summary = sess.run([optimizer, loss, merged_summary_op], feed_dict={is_validating: False})
+                        _, cost, acc, summary = sess.run([optimizer, loss, accuracy, merged_summary_op], feed_dict={is_validating: False})
                         
                         if expcost == None:
                             expcost = cost
@@ -137,7 +140,7 @@ def train(model, config):
                         summary_writer.add_summary(summary, iteration)
 
                         if step % display_step == 0:
-                            logger.info("Iteration " + str(step*batch_size) + ", minibatch Loss= {:.6f}".format(cost) + " moving avg loss {:.6f}".format(expcost))
+                            logger.info("Iteration " + str(step*batch_size) + ", minibatch Loss= {:.6f}".format(cost) + " moving avg loss {:.6f}".format(expcost) + " accuracy: {:.4f}".format(acc))
 
                         step += 1
                         iteration += 1
@@ -159,14 +162,14 @@ def train(model, config):
                 logger.info("Evaluation")
                 coord = tf.train.Coordinator()
                 threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-                true_count = 0
-                total_sample_count = 0
+                #true_count = 0
+                #total_sample_count = 0
                 step = 1
                 try:
                     while not coord.should_stop() and step < steps_per_epoch:
                         predictions = sess.run([top_k_op], feed_dict={is_validating: True})
-                        true_count += np.sum(predictions)
-                        total_sample_count += batch_size
+                        #true_count += np.sum(predictions)
+                        #total_sample_count += batch_size
                         step += 1
                 except tf.errors.OutOfRangeError:
                     logger.info('End of epoch')
@@ -174,11 +177,11 @@ def train(model, config):
                     # When done, ask the threads to stop.
                     coord.request_stop()
                     
-                precision = true_count / total_sample_count
-                logger.info('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
-                summary = tf.Summary()
-                summary.value.add(tag='Precision @ 1', simple_value=precision)
-                summary_writer.add_summary(summary, iteration)
+                #precision = true_count / total_sample_count
+                #logger.info('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
+                #summary = tf.Summary()
+                #summary.value.add(tag='Precision @ 1', simple_value=precision)
+                #summary_writer.add_summary(summary, iteration)
 
 
 # one spot to set defaults

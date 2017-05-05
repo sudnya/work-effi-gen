@@ -272,6 +272,12 @@ class Model:
         return tf.add_n(tf.get_collection('losses'), name='total_loss')
 
 
+    def accuracy(self, logits, labels):
+        labels = tf.cast(labels, tf.int64)
+        correct = tf.equal(tf.argmax(logits, 1), labels)
+        return tf.reduce_mean(tf.cast(correct, tf.int64))
+    
+
     def _add_loss_summaries(self, total_loss):
         """Add summaries for losses in CIFAR-10 model.
 
