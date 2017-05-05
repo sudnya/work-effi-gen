@@ -274,8 +274,8 @@ class Model:
 
     def accuracy(self, logits, labels):
         labels = tf.cast(labels, tf.int64)
-        correct = tf.equal(tf.argmax(logits, 1), labels)
-        return tf.reduce_mean(tf.cast(correct, tf.int64))
+        correct = tf.equal(tf.argmax(logits, dimension=1), labels)
+        return tf.reduce_mean(tf.cast(correct, tf.float32))
     
 
     def _add_loss_summaries(self, total_loss):
