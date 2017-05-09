@@ -323,7 +323,7 @@ class Model:
         decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
 
         # Decay the learning rate exponentially based on the number of steps.
-        lr = tf.train.exponential_decay(config.get("learning_rate")
+        lr = tf.train.exponential_decay(config.get("learning_rate"),
                                       global_step,
                                       decay_steps,
                                       LEARNING_RATE_DECAY_FACTOR,
