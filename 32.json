@@ -1,0 +1,12 @@
+{
+    "data_dir" : "/deep/group/sudnya/cifar10_data",
+    "output_path" : "/deep/group/sudnya/cifar10_train_mb32-mom",
+    "use_fp16" : false,
+    "learning_rate": 1e-3,
+    "momentum": 0.99,
+    "epochs": 500000,
+    "batch_size": 32,
+    "display_step": 100,
+    "steps_per_epoch": 500
+
+}

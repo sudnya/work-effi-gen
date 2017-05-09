@@ -94,7 +94,7 @@ class Model:
         tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
 
-    def _variable_on_cpu(self, name, shape, initializer):
+    def _variable(self, name, shape, initializer):
         """Helper to create a Variable stored on CPU memory.
 
         Args:
@@ -105,7 +105,7 @@ class Model:
         Returns:
             Variable Tensor
         """
-        with tf.device('/cpu:0'):
+        with tf.device('/gpu:0'):
             dtype = tf.float16 if self.config.get("use_fp16") else tf.float32
             var   = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
         return var
@@ -128,7 +128,7 @@ class Model:
             Variable Tensor
         """
         dtype = tf.float16 if self.config.get("use_fp16") else tf.float32
-        var   = self._variable_on_cpu( name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+        var   = self._variable( name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
         if wd is not None:
             weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
             tf.add_to_collection('losses', weight_decay)
@@ -178,7 +178,7 @@ class Model:
                                                  stddev=5e-2,
                                                  wd=0.0)
             conv   = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-            biases = self._variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
+            biases = self._variable('biases', [64], tf.constant_initializer(0.0))
             
             pre_activation = tf.nn.bias_add(conv, biases)
             conv1          = tf.nn.relu(pre_activation, name=scope.name)
@@ -198,7 +198,7 @@ class Model:
                                                  stddev=5e-2,
                                                  wd=0.0)
             conv = tf.nn.conv2d(pool1, kernel, [1, 1, 1, 1], padding='SAME')
-            biases = self._variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
+            biases = self._variable('biases', [64], tf.constant_initializer(0.1))
             pre_activation = tf.nn.bias_add(conv, biases)
             conv2 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv2)
@@ -218,7 +218,7 @@ class Model:
             dim = reshape.get_shape()[1].value
             weights = self._variable_with_weight_decay('weights', shape=[dim, 384],
                                                   stddev=0.04, wd=0.004)
-            biases = self._variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
+            biases = self._variable('biases', [384], tf.constant_initializer(0.1))
             local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
             self._activation_summary(local3)
 
@@ -226,7 +226,7 @@ class Model:
         with tf.variable_scope('local4') as scope:
             weights = self._variable_with_weight_decay('weights', shape=[384, 192],
                                                   stddev=0.04, wd=0.004)
-            biases = self._variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
+            biases = self._variable('biases', [192], tf.constant_initializer(0.1))
             local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
             self._activation_summary(local4)
 
@@ -237,7 +237,7 @@ class Model:
         with tf.variable_scope('softmax_linear') as scope:
             weights = self._variable_with_weight_decay('weights', [192, NUM_CLASSES],
                                                   stddev=1/192.0, wd=0.0)
-            biases = self._variable_on_cpu('biases', [NUM_CLASSES],
+            biases = self._variable('biases', [NUM_CLASSES],
                                       tf.constant_initializer(0.0))
             softmax_linear = tf.nn.softmax(tf.add(tf.matmul(local4, weights), biases, name=scope.name))
             self._activation_summary(softmax_linear)

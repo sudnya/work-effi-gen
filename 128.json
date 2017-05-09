@@ -1,8 +1,9 @@
 {
     "data_dir" : "/deep/group/sudnya/cifar10_data",
-    "output_path" : "/deep/group/sudnya/cifar10_train_minibatch128",
+    "output_path" : "/deep/group/sudnya/cifar10_train_mb128",
     "use_fp16" : false,
-    "epochs": 50,
+    "learning_rate": 1e-5,
+    "epochs": 500000,
     "batch_size": 128,
     "display_step": 100,
     "steps_per_epoch": 200

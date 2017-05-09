@@ -91,7 +91,8 @@ def train(model, config):
         # Optimizer minimizes loss.
         logger.info("Run optimizer to minimize loss")
         #optimizer = tf.train.AdamOptimizer(learning_rate=INITIAL_LEARNING_RATE).minimize(loss)
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.get("learning_rate")).minimize(loss)
+        #optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.get("learning_rate")).minimize(loss)
+        optimizer = tf.train.MomentumOptimizer(learning_rate=config.get("learning_rate"), momentum=config.get("momentum")).minimize(loss)
 
         # Initializer
         initializer = tf.global_variables_initializer()
@@ -102,11 +103,15 @@ def train(model, config):
         # Merge all summaries into a single op
         merged_summary_op = tf.summary.merge_all()
         
+        validation_loss = tf.summary.scalar("validation loss", loss)
+        validation_accuracy = tf.summary.scalar("validation accuracy", accuracy)
+
         display_step    = config.get("display_step")
         epochs          = config.get("epochs")
         steps_per_epoch = config.get("steps_per_epoch")
 
         iteration = 1
+        validation_iteration = 1
         expcost = None
 
         saver = tf.train.Saver()
@@ -162,26 +167,21 @@ def train(model, config):
                 logger.info("Evaluation")
                 coord = tf.train.Coordinator()
                 threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-                #true_count = 0
-                #total_sample_count = 0
                 step = 1
                 try:
                     while not coord.should_stop() and step < steps_per_epoch:
-                        predictions = sess.run([top_k_op], feed_dict={is_validating: True})
-                        #true_count += np.sum(predictions)
-                        #total_sample_count += batch_size
+                        _, _, loss_summary, accuracy_summary = sess.run([loss, accuracy, validation_loss, validation_accuracy], feed_dict={is_validating: True})
+                        summary_writer.add_summary(loss_summary, validation_iteration)
+                        summary_writer.add_summary(accuracy_summary, validation_iteration)
                         step += 1
+                        validation_iteration += 1
                 except tf.errors.OutOfRangeError:
                     logger.info('End of epoch')
                 finally:
                     # When done, ask the threads to stop.
                     coord.request_stop()
                     
-                #precision = true_count / total_sample_count
-                #logger.info('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
-                #summary = tf.Summary()
-                #summary.value.add(tag='Precision @ 1', simple_value=precision)
-                #summary_writer.add_summary(summary, iteration)
+                coord.join(threads)
 
 
 # one spot to set defaults
@@ -201,6 +201,9 @@ def initialize_defaults(config):
     if not config.get("learning_rate"):
         config["learning_rate"] = 1e-5
         logger.debug("learning_rate not set in config file, default to  " + str(config.get("learning_rate")))
+    if not config.get("momentum"):
+        config["momentum"] = 0.95
+        logger.debug("momentum not set in config file, default to  " + str(config.get("momentum")))
     if not config.get("display_step"):
         config["display_step"] = 20 
         logger.debug("display_step not set in config file, default to  " + str(config.get("display_step")))
