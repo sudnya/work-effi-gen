@@ -52,7 +52,7 @@ from model import Model
 logger = logging.getLogger("Train")
 
 
-INITIAL_LEARNING_RATE = 1.0e-2       # Initial learning rate.
+#INITIAL_LEARNING_RATE = 1.0e-2       # Initial learning rate.
 
 
 def train(model, config):
@@ -91,7 +91,7 @@ def train(model, config):
         # Optimizer minimizes loss.
         logger.info("Run optimizer to minimize loss")
         #optimizer = tf.train.AdamOptimizer(learning_rate=INITIAL_LEARNING_RATE).minimize(loss)
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=INITIAL_LEARNING_RATE).minimize(loss)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.get("learning_rate")).minimize(loss)
 
         # Initializer
         initializer = tf.global_variables_initializer()
@@ -198,6 +198,9 @@ def initialize_defaults(config):
     if not config.get("batch_size"):
         config["batch_size"] = 32
         logger.debug("batch_size not set in config file, default to  " + str(config.get("batch_size")))
+    if not config.get("learning_rate"):
+        config["learning_rate"] = 1e-5
+        logger.debug("learning_rate not set in config file, default to  " + str(config.get("learning_rate")))
     if not config.get("display_step"):
         config["display_step"] = 20 
         logger.debug("display_step not set in config file, default to  " + str(config.get("display_step")))
