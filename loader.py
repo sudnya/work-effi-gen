@@ -77,9 +77,7 @@ class Loader:
                   row of the image.  
                   the labels is a list of integer labels.
         """
-        # Sort by length
-        #data = sorted(data, key = lambda x: x[0].shape[0])
-
+        
         inputs, labels = zip(*data)
         labels = [self._class_to_int[l] for l in labels]
         batch_size = self.batch_size
@@ -139,33 +137,11 @@ class Loader:
         """ Returns the raw validation set. """
         return self._val
 
-#    def load_preprocess(self, record_id):
-#        imgPix = load_imgPix_mat(record_id + ".mat")
-#        return self.normalize(imgPix)
 
     def int_to_class(self, label_int):
         """ Convert integer label to class label. """
         return self._int_to_class[label_int]
 
-    def __getstate__(self):
-        """
-        For pickling.
-        """
-        return (self.mean,
-                self.std,
-                self._int_to_class,
-                self._class_to_int,
-                self.class_counts)
-
-    def __setstate__(self, state):
-        """
-        For unpickling.
-        """
-        self.mean = state[0]
-        self.std = state[1]
-        self._int_to_class = state[2]
-        self._class_to_int = state[3]
-        self.class_counts = state[4]
 
 def transform(imgPix):
     scale = random.uniform(0.1, 5.0)
@@ -178,7 +154,6 @@ def load_all_data(data_path):
     will contain a list of pairs of raw imgPix and the
     corresponding label.
     """
-    #label_file = os.path.join(data_path, "REFERENCE-v2.csv")
     # Load record ids + labels
     files = []
     files.append(os.path.join(data_path, 'data_batch_1'))
@@ -194,11 +169,6 @@ def load_all_data(data_path):
         logger.debug("Data set from file " + str(f))
         with open(f, 'rb') as fo:
             record_dict = pickle.load(fo, encoding='bytes')
-            #for key in record_dict:
-            #    print(key.decode("utf-8"))
-            #d = record_dict.get("data".encode("utf-8"))
-            #l = record_dict.get("labels".encode("utf-8"))
-            #test.extend((d,l))
             train_records.extend(record_dict.get("data".encode("utf-8")))
             train_labels.extend(record_dict.get("labels".encode("utf-8")))
 
@@ -222,8 +192,6 @@ def load_all_data(data_path):
 
     return train, val
 
-#def load_imgPix_mat(imgPix_file):
-#    return sio.loadmat(imgPix_file)['val'].squeeze()
 
 def main():
     parser = argparse.ArgumentParser(description="CIFAR10 Loader")
@@ -246,12 +214,12 @@ def main():
     else:
         logging.basicConfig(level=logging.INFO)
 
-    random.seed(2016)
+    random.seed(2017)
     ldr = Loader(data_path, batch_size)
     logger.info("Length of training set {}".format(sum(1 for x in ldr.train)) 
-            + " for batch size {}".format(batch_size))
+            + " batches for batch size {}".format(batch_size))
     logger.info("Length of validation set {}".format(sum(1 for x in ldr.val)) 
-            + " for batch size {}".format(batch_size))
+            + " batches for batch size {}".format(batch_size))
     logger.info("Length of output classes {}".format(ldr.output_dim) 
             + " for batch size {}".format(batch_size))
 
@@ -259,8 +227,10 @@ def main():
     count = 0
     for imgPixs, labels in ldr.train:
         count += 1
-        assert len(imgPixs) == len(labels) == batch_size, "Invalid example count."
-        assert len(imgPixs[0].shape) == 1, "ECG array should be 1D"
+        assert len(imgPixs) == len(labels) == batch_size, "Invalid example 
+            count."
+        assert len(imgPixs[0].shape) == 1, "Img array should be 1D with 1024 
+            entries over 3 color channels"
 
 if __name__ == '__main__':
     main()

@@ -1,41 +1,3 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
-"""A binary to train CIFAR-10 using a single GPU.
-
-Accuracy:
-cifar10_train.py achieves ~86% accuracy after 100K steps (256 epochs of
-data) as judged by cifar10_eval.py.
-
-Speed: With batch_size 128.
-
-System        | Step Time (sec/batch)  |     Accuracy
-------------------------------------------------------------------
-1 Tesla K20m  | 0.35-0.60              | ~86% at 60K steps  (5 hours)
-1 Tesla K40m  | 0.25-0.35              | ~86% at 100K steps (4 hours)
-
-Usage:
-Please see the tutorial and website for how to download the CIFAR-10
-data set, compile the program and train the model.
-
-http://tensorflow.org/tutorials/deep_cnn/
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import json
 import logging
@@ -52,167 +14,159 @@ from model import Model
 logger = logging.getLogger("Train")
 
 
-#INITIAL_LEARNING_RATE = 1.0e-2       # Initial learning rate.
-
-
-def train(model, config):
+def run_epoch(model, loader, session, summarizer, iteration):
     
-    """Train CIFAR-10 for a number of steps."""
-    batch_size  = config.get("batch_size")
-    output_path = config.get("output_path")
+    train_step = model.get_train_step_op()
+    accuracy = model.get_accuracy()
+    loss = model.get_loss()
+    inputs = model.get_inputs()
 
-    with tf.Graph().as_default():
-        global_step = tf.contrib.framework.get_or_create_global_step()
 
-        # Get images and labels for CIFAR-10.
-        logger.info("Process inputs and labels for train/val sets")
+    # create summary ops for things that you want to log
+    tf.summary.scalar("training_loss", loss)
+    tf.summary.scalar("training_accuracy", accuracy)
+    
+    # merge summaries for entire graph
+    summary_op = tf.summary.merge_all()
 
-        images, labels         = model.process_inputs(is_training=True)
-        dev_images, dev_labels = model.process_inputs(is_training=False)
+    for batch in loader.train:
+        var_list = [loss, acccuracy, train_step, summary_op]
 
-        is_validating = tf.placeholder(dtype=bool,shape=())
+        # update the model
+        result = session.run(var_list, feed_dict={inputs : batch})
+
+        result_loss, result_accuracy, _, result_summary = result
         
-        images = tf.cond(is_validating, lambda:dev_images, lambda:images)
-        labels = tf.cond(is_validating, lambda:dev_labels, lambda:labels)
+        # log summary
+        summary_writer.add_summary(result_summary, iteration)
 
-        # Build a Graph that computes logits predictions from the inference model
-        logits = model.inference(images)
+        iteration += 1
 
-        # Calculate loss.
-        logger.info("Calculate loss")
-        loss = model.loss(logits, labels)
+    return iteration
+
+
+def run_validation(model, loader, session, summarizer, iteration):
+    
+    accuracy = model.get_accuracy()
+    loss = model.get_loss()
+    inputs = model.get_inputs()
+
+
+    # create summary ops for things that you want to log
+    tf.summary.scalar("validation_loss", loss)
+    tf.summary.scalar("validation_accuracy", accuracy)
+    
+    # merge summaries for entire graph
+    summary_op = tf.summary.merge_all()
+
+    for batch in loader.val:
+        var_list = [loss, acccuracy, summary_op]
+
+        # update the model
+        result = session.run(var_list, feed_dict={inputs : batch})
+
+        result_loss, result_accuracy, _, result_summary = result
         
-        accuracy = model.accuracy(logits, labels)
+        # log summary
+        summary_writer.add_summary(result_summary, iteration)
 
-        # calculate predictions
-        logger.info("Top K predictions")
-        top_k_op = tf.nn.in_top_k(logits, labels, 1)
+        iteration += 1
 
-        # Optimizer minimizes loss.
-        logger.info("Run optimizer to minimize loss")
-        #optimizer = tf.train.AdamOptimizer(learning_rate=INITIAL_LEARNING_RATE).minimize(loss)
-        #optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.get("learning_rate")).minimize(loss)
-        optimizer = tf.train.MomentumOptimizer(learning_rate=config.get("learning_rate"), momentum=config.get("momentum")).minimize(loss)
-
-        # Initializer
-        initializer = tf.global_variables_initializer()
-
-        # Create a summary to monitor cost tensor
-        tf.summary.scalar("loss", loss)
-        tf.summary.scalar("accuracy", accuracy)
-        # Merge all summaries into a single op
-        merged_summary_op = tf.summary.merge_all()
-        
-        validation_loss = tf.summary.scalar("validation loss", loss)
-        validation_accuracy = tf.summary.scalar("validation accuracy", accuracy)
-
-        display_step    = config.get("display_step")
-        epochs          = config.get("epochs")
-        steps_per_epoch = config.get("steps_per_epoch")
-
-        iteration = 1
-        validation_iteration = 1
-        expcost = None
-
-        saver = tf.train.Saver()
-        with tf.Session() as sess:
-            sess.run(initializer)
-            saver.save(sess, os.path.join(output_path, 'model'))
-
-        for epoch in range(epochs):
-            logger.info("Epoch: " + str(epoch))
-            with tf.Session() as sess:
-                epoch_saver = tf.train.import_meta_graph(os.path.join(output_path, 'model.meta'))
-                epoch_saver.restore(sess, tf.train.latest_checkpoint(os.path.join(output_path, './')))
-
-                summary_writer = tf.summary.FileWriter(output_path, graph=tf.get_default_graph())
-
-                # Training
-                coord = tf.train.Coordinator()
-                threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-                logger.debug("Training epoch: " + str(epoch))
-                step = 1
-                try:
-                    while not coord.should_stop() and step < steps_per_epoch:
-                        _, cost, acc, summary = sess.run([optimizer, loss, accuracy, merged_summary_op], feed_dict={is_validating: False})
-                        
-                        if expcost == None:
-                            expcost = cost
-                        else:
-                            expcost = (0.01) * cost + 0.99*expcost
-
-                        summary_writer.add_summary(summary, iteration)
-
-                        if step % display_step == 0:
-                            logger.info("Iteration " + str(step*batch_size) + ", minibatch Loss= {:.6f}".format(cost) + " moving avg loss {:.6f}".format(expcost) + " accuracy: {:.4f}".format(acc))
-
-                        step += 1
-                        iteration += 1
-
-                except tf.errors.OutOfRangeError:
-                    logger.info('End of epoch')
-                finally:
-                    # When done, ask the threads to stop.
-                    coord.request_stop()
-
-                # Wait for threads to finish.
-                coord.join(threads)
-                saver.save(sess, os.path.join(output_path, 'model'))
-
-            with tf.Session() as sess:
-                epoch_saver = tf.train.import_meta_graph(os.path.join(output_path, 'model.meta'))
-                epoch_saver.restore(sess, tf.train.latest_checkpoint(os.path.join(output_path, './')))
-                # Eval
-                logger.info("Evaluation")
-                coord = tf.train.Coordinator()
-                threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-                step = 1
-                try:
-                    while not coord.should_stop() and step < steps_per_epoch:
-                        _, _, loss_summary, accuracy_summary = sess.run([loss, accuracy, validation_loss, validation_accuracy], feed_dict={is_validating: True})
-                        summary_writer.add_summary(loss_summary, validation_iteration)
-                        summary_writer.add_summary(accuracy_summary, validation_iteration)
-                        step += 1
-                        validation_iteration += 1
-                except tf.errors.OutOfRangeError:
-                    logger.info('End of epoch')
-                finally:
-                    # When done, ask the threads to stop.
-                    coord.request_stop()
-                    
-                coord.join(threads)
+    return iteration
 
 
-# one spot to set defaults
+def run_training(model, config):
+    output_save_path = config.get("output_path")
+    
+    tf.set_random_seed(config['seed'])
+    
+    # Variables that will be initialized, and the program itself
+    model.construct_model(config)
+
+    # Checkpointing
+    saver = tf.train.Saver(tf.global_variables())
+
+    initializer = tf.global_variables_initializers()
+
+    with tf.Session() as sess:
+
+        sess.run(initializer)
+
+        summarizer = tf.summary.FileWriter(output_save_path, sess.graph)
+
+        iteration = 0
+
+        for epoch in range(config.get("epochs")):
+            start = time.time()
+
+            iteration = run_epoch(model, loader, sess, summarizer,
+                                  iteration)
+
+            saver.save(sess, os.path.join(output_save_path, "model"))
+
+            eval_acc = run_validation(model, loader, sess, summarizer)
+
+
+# one stop shop to set defaults
 def initialize_defaults(config):
     if not config.get("data_dir"):
         config["data_dir"] = "/tmp/cifar10_data"
-        logger.debug("data_dir not set in config file, default to " + str(config.get("data_dir")))
+        logger.debug("data_dir not set in config file, default to " 
+                + str(config.get("data_dir")))
     if not config.get("output_path"):
-        logger.debug("output_path not set in config file, default to " + str(config.get("output_path")))
+        logger.debug("output_path not set in config file, default to " 
+                + str(config.get("output_path")))
         config["output_path"] = "/tmp/cifar10_output"
     if not config.get("epochs"):
         config["epochs"] = 2
-        logger.debug("epochs not set in config file, default to  " + str(config.get("epochs")))
+        logger.debug("epochs not set in config file, default to  " 
+                + str(config.get("epochs")))
     if not config.get("batch_size"):
         config["batch_size"] = 32
-        logger.debug("batch_size not set in config file, default to  " + str(config.get("batch_size")))
+        logger.debug("batch_size not set in config file, default to  " 
+                + str(config.get("batch_size")))
     if not config.get("learning_rate"):
         config["learning_rate"] = 1e-5
-        logger.debug("learning_rate not set in config file, default to  " + str(config.get("learning_rate")))
+        logger.debug("learning_rate not set in config file, default to  " 
+                + str(config.get("learning_rate")))
     if not config.get("momentum"):
         config["momentum"] = 0.95
-        logger.debug("momentum not set in config file, default to  " + str(config.get("momentum")))
+        logger.debug("momentum not set in config file, default to  " 
+                + str(config.get("momentum")))
     if not config.get("display_step"):
         config["display_step"] = 20 
-        logger.debug("display_step not set in config file, default to  " + str(config.get("display_step")))
+        logger.debug("display_step not set in config file, default to  " 
+                + str(config.get("display_step")))
     if not config.get("steps_per_epoch"):
         config["steps_per_epoch"] = 100
-        logger.debug("steps_per_epoch not set in config file, default to  " + str(config.get("steps_per_epoch")))
+        logger.debug("steps_per_epoch not set in config file, default to  " 
+                + str(config.get("steps_per_epoch")))
+
+    if not config.get("seed"):
+        config["seed"] = 2017
+        logger.debug("seed not set in config file, default to  " 
+                + str(config.get("seed")))
+    if not config.get("input_height"):
+        config["input_height"] = 24
+        logger.debug("input_height not set in config file, default to  " 
+                + str(config.get("input_height")))
+    if not config.get("input_width"):
+        config["input_width"] = 24
+        logger.debug("input_width not set in config file, default to  " 
+                + str(config.get("input_width")))
+    if not config.get("input_channels"):
+        config["input_channels"] = 3
+        logger.debug("input_channels not set in config file, default to  " 
+                + str(config.get("input_channels")))
+
+    if not config.get("output_classes"):
+        config["output_classes"] = 10
+        logger.debug("output_classes not set in config file, default to  " 
+                + str(config.get("output_classes")))
 
 
-def main(argv=None):  # pylint: disable=unused-argument
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Training driver")
     parser.add_argument("-v", "--verbose", default=False, action="store_true")
     parser.add_argument("-c", "--config_file", default="config.json")
@@ -236,15 +190,17 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     data_dir    = config.get("data_dir")
     output_path = config.get("output_path")
-    model       = Model(config, is_verbose)
+    model       = Model(is_verbose)
     model.maybe_download_and_extract(data_dir)
 
     if tf.gfile.Exists(output_path):
         tf.gfile.DeleteRecursively(output_path)
     tf.gfile.MakeDirs(output_path)
     
-    train(model, config)
+#    train(model, config)
+    run_training(model, config)
 
 
 if __name__ == '__main__':
     tf.app.run()
+
