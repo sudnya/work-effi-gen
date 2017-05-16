@@ -11,6 +11,12 @@ import json
 
 logger = logging.getLogger("Loader")
 
+def formatData(imagePixels, batch_size, imgChannels, imgHeight, imgWidth):
+    return np.transpose(
+        np.reshape(np.array(imagePixels), (batch_size, imgChannels, 
+                    imgHeight, imgWidth)), 
+                    (0, 2, 3, 1))
+
 class Loader:
     """
     Loader class for feeding data to the network. This class loads the training
@@ -28,7 +34,7 @@ class Loader:
     This class is also responsible for normalizing the inputs.
     """
 
-    def __init__(self, data_path, batch_size,
+    def __init__(self, data_path, config,
                  seed=None, augment=False):
         """
         :param data_path: path to the training and validation files
@@ -43,10 +49,16 @@ class Loader:
         if seed is not None:
             random.seed(seed)
 
-        self.batch_size = batch_size
+        self.batch_size = config.get("batch_size")
         self.augment = augment
+        self.imgChannels = config.get("input_channels")
+        self.imgHeight   = config.get("input_height")
+        self.imgWidth    = config.get("input_width")
 
-        self._train, self._val = load_all_data(data_path)
+        self._train, self._val = load_all_data(data_path, self.batch_size, 
+                                                self.imgChannels, 
+                                                self.imgHeight,
+                                                self.imgWidth)
         logger.info("Training set has " + str(len(self._train)) + " samples")
         logger.info("Validation set has " + str(len(self._val)) + " samples")
 
@@ -81,10 +93,15 @@ class Loader:
         inputs, labels = zip(*data)
         labels = [self._class_to_int[l] for l in labels]
         batch_size = self.batch_size
+        channels   = self.imgChannels
+        height     = self.imgHeight
+        width      = self.imgWidth
         data_size = len(labels)
 
         end = data_size - batch_size + 1
-        batches = [(inputs[i:i + batch_size], labels[i:i + batch_size])
+        batches = [(formatData(inputs[i:i + batch_size], batch_size, channels,
+                    height, width),
+                    labels[i:i + batch_size])
                    for i in range(0, end, batch_size)]
         random.shuffle(batches)
 
@@ -113,6 +130,7 @@ class Loader:
 
         self.mean = mean.astype(np.float32)
         self.std = np.sqrt(var).astype(np.float32)
+
 
     @property
     def classes(self):
@@ -148,7 +166,7 @@ def transform(imgPix):
     flip = random.choice([-1.0, 1.0])
     return  imgPix * flip * scale
 
-def load_all_data(data_path):
+def load_all_data(data_path, batch_size, channels, height, width):
     """
     Returns tuple of training and validation sets. Each set
     will contain a list of pairs of raw imgPix and the
@@ -168,7 +186,7 @@ def load_all_data(data_path):
     for f in files:
         logger.debug("Data set from file " + str(f))
         with open(f, 'rb') as fo:
-            record_dict = pickle.load(fo, encoding='bytes')
+            record_dict = pickle.load(fo)#, encoding='bytes')
             train_records.extend(record_dict.get("data".encode("utf-8")))
             train_labels.extend(record_dict.get("labels".encode("utf-8")))
 
@@ -177,7 +195,7 @@ def load_all_data(data_path):
     val_labels = []
     with open(val_f, 'rb') as fo:
         logger.debug("Data set from file " + str(f))
-        record_dict = pickle.load(fo, encoding='bytes')
+        record_dict = pickle.load(fo)#, encoding='bytes')
         val_records.extend(record_dict.get("data".encode("utf-8")))
         val_labels.extend(record_dict.get("labels".encode("utf-8")))
 
@@ -199,23 +217,27 @@ def main():
             default = False, action = "store_true")
     parser.add_argument("-p", "--data_path",
             default="/deep/group/sudnya/cifar-10-batches-py")
-    parser.add_argument("-b", "--batch_size", default=32)
+    parser.add_argument("-c", "--config_file", default="config.json")
 
     parsed_arguments = parser.parse_args()
     arguments = vars(parsed_arguments)
 
+    config_file  = arguments['config_file']
     is_verbose   = arguments['verbose']
     data_path    = arguments['data_path']
-    batch_size   = arguments['batch_size']
 
 
     if is_verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
+    
+    with open(config_file) as fid:
+        config = json.load(fid)
 
     random.seed(2017)
-    ldr = Loader(data_path, batch_size)
+    ldr = Loader(data_path, config)
+    batch_size = config.get("batch_size")
     logger.info("Length of training set {}".format(sum(1 for x in ldr.train)) 
             + " batches for batch size {}".format(batch_size))
     logger.info("Length of validation set {}".format(sum(1 for x in ldr.val)) 
@@ -227,9 +249,9 @@ def main():
     count = 0
     for imgPixs, labels in ldr.train:
         count += 1
-        assert len(imgPixs) == len(labels) == batch_size, "Invalid example 
+        assert len(imgPixs) == len(labels) == batch_size, "Invalid example \
             count."
-        assert len(imgPixs[0].shape) == 1, "Img array should be 1D with 1024 
+        assert len(imgPixs[0].shape) == 1, "Img array should be 1D with 1024\
             entries over 3 color channels"
 
 if __name__ == '__main__':

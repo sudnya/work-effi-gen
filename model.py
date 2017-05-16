@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import tarfile
+import numpy as np
 
 from six.moves import urllib
 import tensorflow as tf
@@ -43,20 +44,26 @@ class Model:
                           config.get("input_width"), 
                           config.get("input_channels")))
 
+        self.labels = tf.placeholder(tf.int64, shape=(config.get("batch_size")))
         acts = self._build_nn(config.get("model"), self.inputs)
 
-        output_dims = (config.get("batch_size"), 
-                       config.get("output_classes"))
-        logits = tf.contrib.layers.fully_connected(acts, output_dims,
+        #TODO: is batch size not needed for FC layer? 
+        #output_dims = (config.get("batch_size"), 
+        #               config.get("output_classes"))
+
+        #print(output_dims)
+        acts = tf.contrib.layers.flatten(acts)
+        logits = tf.contrib.layers.fully_connected(acts, config.get("output_classes"),
                                                    activation_fn=None,
                                                    weights_initializer=tf.contrib.layers.xavier_initializer(seed=2017))
+        print (logits.get_shape)
         self.probs = tf.nn.softmax(logits)
 
-        labels = tf.placeholder(tf.int64, shape=(self.batch_size))
-        self.loss      = self._get_loss(logits, labels)
-        self.accuracy  = self._get_accuracy(logits, labels)
+        self.loss      = self._get_loss(logits, self.labels)
+        self.accuracy  = self._get_accuracy(logits, self.labels)
         self.optimizer = self._get_optimizer(config)
-        self.train_op = optimizer.minimize(self.loss)
+        self.train_op  = self.optimizer.minimize(self.loss)
+
 
 
     def get_train_step_op(self):
@@ -70,6 +77,9 @@ class Model:
 
     def get_inputs(self):
         return self.inputs
+
+    def get_labels(self):
+        return self.labels
 
     def _get_loss(self, logits, labels):
         """Add L2Loss to all the trainable variables.
@@ -111,12 +121,12 @@ class Model:
         #    raise ValueError("Currently nn: " + str(model_cfg.get("name")) 
         #            + " is not supported")
 
-    def _build_cnn(self, cfg, inputs):
-        config = cfg.get("cnn").get("layer_config")
+    def _build_cnn(self, config, inputs):
+        #config = cfg.get("cnn").get("layer_config")
         acts = inputs
 
         ctr = 0
-        for layer in config['conv_layers']:
+        for layer in config.get('layer_config'):
             num_filters = layer['num_filters']
             filter_size = layer['filter_size']
             stride      = layer['stride']
@@ -188,35 +198,4 @@ class Model:
     def _get_optimizer(self, config):
         return tf.train.GradientDescentOptimizer(config.get('learning_rate'))
 
-
-
-    def maybe_download_and_extract(self, data_dir):
-        """Download and extract the tarball from Alex's website."""
-        dest_directory = data_dir
-
-        if not os.path.exists(dest_directory):
-            print ("Download and extract the tarball from Alex's website.")
-            logger.info ("Creating directory: " + str(dest_directory))
-            os.makedirs(dest_directory)
-
-        filename = DATA_URL.split('/')[-1]
-        filepath = os.path.join(dest_directory, filename)
-        
-        if not os.path.exists(filepath):
-            def _progress(count, block_size, total_size):
-                sys.stdout.write('\r>> Downloading %s %.1f%%' % (filename, 
-                    float(count * block_size) / float(total_size) * 100.0))
-                sys.stdout.flush()
-            
-            filepath, _ = urllib.request.urlretrieve(DATA_URL, 
-                                                    filepath, 
-                                                    _progress)
-            statinfo = os.stat(filepath)
-            logger.info('Successfully downloaded' + str(filename) + 
-                        str(statinfo.st_size) + 'bytes.')
-        
-        extracted_dir_path = os.path.join(dest_directory, 'cifar-10-batches-bin')
-        
-        if not os.path.exists(extracted_dir_path):
-            tarfile.open(filepath, 'r:gz').extractall(dest_directory)
 

@@ -3,6 +3,7 @@ import json
 import logging
 import numpy as np
 import os
+import loader
 
 from datetime import datetime
 import time
@@ -20,6 +21,7 @@ def run_epoch(model, loader, session, summarizer, iteration):
     accuracy = model.get_accuracy()
     loss = model.get_loss()
     inputs = model.get_inputs()
+    labels = model.get_labels()
 
 
     # create summary ops for things that you want to log
@@ -30,15 +32,23 @@ def run_epoch(model, loader, session, summarizer, iteration):
     summary_op = tf.summary.merge_all()
 
     for batch in loader.train:
-        var_list = [loss, acccuracy, train_step, summary_op]
+        #print (batch)
+        var_list = [loss, accuracy, train_step, summary_op]
 
         # update the model
-        result = session.run(var_list, feed_dict={inputs : batch})
+        batch_data = batch[0] 
+        batch_labels = batch[1]
+
+        result = session.run(var_list, feed_dict={
+            inputs : batch_data,
+            labels : batch_labels})
 
         result_loss, result_accuracy, _, result_summary = result
+        logger.info("validation loss " + str(result_loss) + " accuracy " +
+                str(result_accuracy))
         
         # log summary
-        summary_writer.add_summary(result_summary, iteration)
+        summarizer.add_summary(result_summary, iteration)
 
         iteration += 1
 
@@ -50,6 +60,7 @@ def run_validation(model, loader, session, summarizer, iteration):
     accuracy = model.get_accuracy()
     loss = model.get_loss()
     inputs = model.get_inputs()
+    labels = model.get_labels()
 
 
     # create summary ops for things that you want to log
@@ -60,25 +71,32 @@ def run_validation(model, loader, session, summarizer, iteration):
     summary_op = tf.summary.merge_all()
 
     for batch in loader.val:
-        var_list = [loss, acccuracy, summary_op]
+        var_list = [loss, accuracy, summary_op]
 
+        batch_data = batch[0] 
+        batch_labels = batch[1]
         # update the model
-        result = session.run(var_list, feed_dict={inputs : batch})
+        result = session.run(var_list, feed_dict={
+            inputs : batch_data,
+            labels : batch_labels})
+        #result = session.run(var_list, feed_dict={inputs : batch})
 
-        result_loss, result_accuracy, _, result_summary = result
+        result_loss, result_accuracy, result_summary = result
+        logger.info("validation loss " + str(result_loss) + " accuracy " +
+                str(result_accuracy))
         
         # log summary
-        summary_writer.add_summary(result_summary, iteration)
+        summarizer.add_summary(result_summary, iteration)
 
         iteration += 1
 
     return iteration
 
 
-def run_training(model, config):
+def run_training(model, loader, config):
     output_save_path = config.get("output_path")
     
-    tf.set_random_seed(config['seed'])
+    tf.set_random_seed(config.get('seed'))
     
     # Variables that will be initialized, and the program itself
     model.construct_model(config)
@@ -86,7 +104,7 @@ def run_training(model, config):
     # Checkpointing
     saver = tf.train.Saver(tf.global_variables())
 
-    initializer = tf.global_variables_initializers()
+    initializer = tf.initialize_all_variables()
 
     with tf.Session() as sess:
 
@@ -104,7 +122,7 @@ def run_training(model, config):
 
             saver.save(sess, os.path.join(output_save_path, "model"))
 
-            eval_acc = run_validation(model, loader, sess, summarizer)
+            eval_acc = run_validation(model, loader, sess, summarizer, iteration)
 
 
 # one stop shop to set defaults
@@ -190,15 +208,14 @@ def main(argv=None):
 
     data_dir    = config.get("data_dir")
     output_path = config.get("output_path")
+    ldr         = loader.Loader(data_dir, config)
     model       = Model(is_verbose)
-    model.maybe_download_and_extract(data_dir)
 
     if tf.gfile.Exists(output_path):
         tf.gfile.DeleteRecursively(output_path)
     tf.gfile.MakeDirs(output_path)
     
-#    train(model, config)
-    run_training(model, config)
+    run_training(model, ldr, config)
 
 
 if __name__ == '__main__':
