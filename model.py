@@ -136,7 +136,7 @@ class Model:
             if bn is not None or ln is not None:
                 acts = tf.contrib.layers.convolution2d(acts, 
                                                        num_outputs=num_filters,
-                                                       kernel_size=[filter_size, 1],
+                                                       kernel_size=[filter_size, filter_size],
                                                        stride=stride,
                                                        weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(seed=ctr),
                                                        biases_initializer=None,
@@ -161,7 +161,7 @@ class Model:
             else:
                 acts = tf.contrib.layers.convolution2d(acts, 
                                                        num_outputs=num_filters,
-                                                       kernel_size=[filter_size, 1],
+                                                       kernel_size=[filter_size, filter_size],
                                                        weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(seed=ctr),
 
                                                        stride=stride)

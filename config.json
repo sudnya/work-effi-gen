@@ -3,8 +3,8 @@
     "output_path" : "/deep/group/sudnya/cifar10_train_test",
     "epochs": 50,
     "batch_size": 16,
-    "learning_rate": 1e-5,
-    "momentum": 0.95,
+    "learning_rate": 1e-4,
+    "momentum": 0.99,
     "display_step": 100,
     "steps_per_epoch": 200,
     "seed": 2017,
@@ -17,19 +17,19 @@
         "name": "cnn",
         "layer_config" : [
         { 
-            "filter_size" : 64,
-            "num_filters" : 32,
-            "stride"      : 2
+            "filter_size" : 3, 
+            "num_filters" : 64,
+            "stride"      : 1
         },
         { 
-            "filter_size" : 64,
-            "num_filters" : 32,
-            "stride"      : 2
+            "filter_size" : 3, 
+            "num_filters" : 64,
+            "stride"      : 1
         },
         { 
-            "filter_size" : 64,
-            "num_filters" : 32,
-            "stride"      : 2
+            "filter_size" : 3, 
+            "num_filters" : 64,
+            "stride"      : 1
         }
         ]
     }
