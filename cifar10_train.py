@@ -15,7 +15,8 @@ from model import Model
 logger = logging.getLogger("Train")
 
 
-def run_epoch(model, loader, session, summarizer, iteration):
+def run_training_epoch(model, loader, session, summarizer, iteration, 
+                        summary_op):
     
     train_step = model.get_train_step_op()
     accuracy = model.get_accuracy()
@@ -23,13 +24,6 @@ def run_epoch(model, loader, session, summarizer, iteration):
     inputs = model.get_inputs()
     labels = model.get_labels()
 
-
-    # create summary ops for things that you want to log
-    tf.summary.scalar("training_loss", loss)
-    tf.summary.scalar("training_accuracy", accuracy)
-    
-    # merge summaries for entire graph
-    summary_op = tf.summary.merge_all()
 
     for batch in loader.train:
         #print (batch)
@@ -44,7 +38,7 @@ def run_epoch(model, loader, session, summarizer, iteration):
             labels : batch_labels})
 
         result_loss, result_accuracy, _, result_summary = result
-        logger.info("validation loss " + str(result_loss) + " accuracy " +
+        logger.info("training loss " + str(result_loss) + " accuracy " +
                 str(result_accuracy))
         
         # log summary
@@ -55,20 +49,14 @@ def run_epoch(model, loader, session, summarizer, iteration):
     return iteration
 
 
-def run_validation(model, loader, session, summarizer, iteration):
+def run_validation_epoch(model, loader, session, summarizer, iteration, 
+                        summary_op):
     
     accuracy = model.get_accuracy()
     loss = model.get_loss()
     inputs = model.get_inputs()
     labels = model.get_labels()
 
-
-    # create summary ops for things that you want to log
-    tf.summary.scalar("validation_loss", loss)
-    tf.summary.scalar("validation_accuracy", accuracy)
-    
-    # merge summaries for entire graph
-    summary_op = tf.summary.merge_all()
 
     for batch in loader.val:
         var_list = [loss, accuracy, summary_op]
@@ -79,7 +67,6 @@ def run_validation(model, loader, session, summarizer, iteration):
         result = session.run(var_list, feed_dict={
             inputs : batch_data,
             labels : batch_labels})
-        #result = session.run(var_list, feed_dict={inputs : batch})
 
         result_loss, result_accuracy, result_summary = result
         logger.info("validation loss " + str(result_loss) + " accuracy " +
@@ -105,6 +92,23 @@ def run_training(model, loader, config):
     saver = tf.train.Saver(tf.global_variables())
 
     initializer = tf.initialize_all_variables()
+    # create summary ops for things that you want to log
+    accuracy = model.get_accuracy()
+    loss = model.get_loss()
+    
+    training_loss_summary = tf.summary.scalar("training_loss", loss)
+    training_accuracy_summary = tf.summary.scalar("training_accuracy", accuracy)
+    
+    validation_loss_summary = tf.summary.scalar("validation_loss", loss)
+    validation_accuracy_summary = tf.summary.scalar("validation_accuracy", 
+                                                    accuracy)
+    
+    # merge summaries for entire graph
+    training_summary_op = tf.summary.merge([training_loss_summary, 
+                                            training_accuracy_summary])
+    validation_summary_op = tf.summary.merge([validation_loss_summary, 
+                                            validation_accuracy_summary])
+
 
     with tf.Session() as sess:
 
@@ -117,12 +121,13 @@ def run_training(model, loader, config):
         for epoch in range(config.get("epochs")):
             start = time.time()
 
-            iteration = run_epoch(model, loader, sess, summarizer,
-                                  iteration)
+            iteration = run_training_epoch(model, loader, sess, summarizer,
+                                  iteration, training_summary_op)
 
             saver.save(sess, os.path.join(output_save_path, "model"))
 
-            eval_acc = run_validation(model, loader, sess, summarizer, iteration)
+            eval_acc = run_validation_epoch(model, loader, sess, summarizer, iteration,
+                                      validation_summary_op)
 
 
 # one stop shop to set defaults

@@ -186,7 +186,7 @@ def load_all_data(data_path, batch_size, channels, height, width):
     for f in files:
         logger.debug("Data set from file " + str(f))
         with open(f, 'rb') as fo:
-            record_dict = pickle.load(fo)#, encoding='bytes')
+            record_dict = pickle.load(fo, encoding='bytes')
             train_records.extend(record_dict.get("data".encode("utf-8")))
             train_labels.extend(record_dict.get("labels".encode("utf-8")))
 
@@ -195,7 +195,7 @@ def load_all_data(data_path, batch_size, channels, height, width):
     val_labels = []
     with open(val_f, 'rb') as fo:
         logger.debug("Data set from file " + str(f))
-        record_dict = pickle.load(fo)#, encoding='bytes')
+        record_dict = pickle.load(fo, encoding='bytes')
         val_records.extend(record_dict.get("data".encode("utf-8")))
         val_labels.extend(record_dict.get("labels".encode("utf-8")))
 

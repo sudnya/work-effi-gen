@@ -1,6 +1,6 @@
 {
     "data_dir" : "/deep/group/sudnya/cifar-10-batches-py",
-    "output_path" : "/deep/group/sudnya/cifar10_train_test",
+    "output_path" : "/deep/group/sudnya/cifar10_mb16",
     "epochs": 50,
     "batch_size": 16,
     "learning_rate": 1e-4,
